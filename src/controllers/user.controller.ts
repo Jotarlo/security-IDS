@@ -1,30 +1,28 @@
+import {service} from '@loopback/core';
 import {
   Count,
   CountSchema,
   Filter,
   FilterExcludingWhere,
   repository,
-  Where,
+  Where
 } from '@loopback/repository';
 import {
-  post,
-  param,
-  get,
-  getModelSchemaRef,
-  patch,
-  put,
-  del,
-  requestBody,
-  response,
+  del, get,
+  getModelSchemaRef, HttpErrors, param, patch, post, put, requestBody,
+  response
 } from '@loopback/rest';
-import {User} from '../models';
+import {LoginCredentials, ResetPasswordCredentials, User} from '../models';
 import {UserRepository} from '../repositories';
+import {SecurityService} from '../services';
 
 export class UserController {
   constructor(
     @repository(UserRepository)
-    public userRepository : UserRepository,
-  ) {}
+    public userRepository: UserRepository,
+    @service(SecurityService)
+    private secService: SecurityService
+  ) { }
 
   @post('/user')
   @response(200, {
@@ -44,6 +42,11 @@ export class UserController {
     })
     user: Omit<User, '_id'>,
   ): Promise<User> {
+    user.status = false;
+    let nuevaClave = this.secService.CrearClaveAleatoria();
+    let claveCifrada = this.secService.CifrarCadena(nuevaClave);
+    user.password = claveCifrada;
+    console.log(nuevaClave);
     return this.userRepository.create(user);
   }
 
@@ -147,4 +150,54 @@ export class UserController {
   async deleteById(@param.path.string('id') id: string): Promise<void> {
     await this.userRepository.deleteById(id);
   }
+
+  @post('/login')
+  @response(200, {
+    description: 'Identificación de Usuarios',
+    content: {'application/json': {schema: getModelSchemaRef(LoginCredentials)}},
+  })
+  async identificar(
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: getModelSchemaRef(LoginCredentials),
+        },
+      },
+    })
+    credenciales: LoginCredentials,
+  ): Promise<object> {
+    try {
+      let obj = await this.secService.IdentificarUsuario(credenciales);
+      if (obj) {
+        return obj;
+      }
+      return new HttpErrors[401]("Datos inválidos");
+    } catch (err) {
+      throw new HttpErrors[400](`Se ha generado un error en la validación de las credenciales para el usuario ${credenciales.username}`);
+    }
+  }
+
+
+  @post('/recuperar-clave')
+  @response(200, {
+    description: 'Identificación de Usuarios',
+    content: {'application/json': {schema: getModelSchemaRef(LoginCredentials)}},
+  })
+  async RecuperarClave(
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: getModelSchemaRef(ResetPasswordCredentials),
+        },
+      },
+    })
+    credenciales: ResetPasswordCredentials,
+  ): Promise<boolean> {
+    try {
+      return this.secService.RecuperarClave(credenciales);
+    } catch (err) {
+      throw new HttpErrors[400](`Se ha generado un error en la recuperación de la clave para el correo ${credenciales.email}`);
+    }
+  }
+
 }
